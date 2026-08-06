@@ -37,6 +37,9 @@ ENV COMPOSER_ALLOW_SUPERUSER=1
 ENV PHP_INI_SCAN_DIR=":$PHP_INI_DIR/app.conf.d"
 
 ###> recipes ###
+###> doctrine/doctrine-bundle ###
+RUN install-php-extensions pdo_pgsql
+###< doctrine/doctrine-bundle ###
 ###< recipes ###
 
 COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
@@ -145,6 +148,14 @@ RUN <<-EOF
 	chown -R www-data:www-data /data /config
 	# Remove setuid/setgid bits
 	find / -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
+	# FrankenPHP ships with cap_net_bind_service (to bind :80 as non-root). We serve on the
+	# unprivileged port 8080 behind the Envoy gateway, so strip the file capability — otherwise
+	# no_new_privs (securityContext allowPrivilegeEscalation:false) refuses to exec a file-cap binary.
+	apt-get update
+	apt-get install -y --no-install-recommends libcap2-bin
+	setcap -r /usr/local/bin/frankenphp || true
+	apt-get purge -y --auto-remove libcap2-bin
+	rm -rf /var/lib/apt/lists/*
 EOF
 
 COPY --link --exclude=var --from=frankenphp_prod_builder /app /app
